@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "func-ai"
+version = "0.1.0"
+description = "AI Functional Catalog - OpenAI functions on steriods"
+authors = ["Trayan Azarov <trayan.azarov@amikos.tech>"]
+readme = "README.md"
+license = "MIT"
+packages = [{ include = "func_ai" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+openai = "^0.27.8"
+requests = "^2.31.0"
+chromadb = "^0.3.26"
+python-ulid = "^1.1.0"
+fastapi = "^0.98.0"
+
+
+[tool.poetry.group.test.dependencies]
+pytest = "^7.4.0"
+pytest-env = "^0.8.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
