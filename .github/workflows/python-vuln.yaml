@@ -5,7 +5,7 @@ on:
       - '*'
       - '*/**'
     paths:
-      - cypher_ai_helper/**
+      - func_ai/**
 
 jobs:
   bandit-scan:

@@ -7,6 +7,11 @@ readme = "README.md"
 license = "MIT"
 packages = [{ include = "func_ai" }]
 
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/amikos-tech/func-ai/issues"
+"Homepage" = "https://github.com/amikos-tech/func-ai/"
+"Source" = "https://github.com/amikos-tech/func-ai/"
+
 [tool.poetry.dependencies]
 python = "^3.10"
 openai = "^0.27.8"
