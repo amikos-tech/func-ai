@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
       - uses: amikos-tech/py-vulnerability-scan@v0.1.1
         with:
-          input-dir: './cypher_ai_helper'
+          input-dir: './func_ai'
           format: 'json'
           bandit-config: 'bandit.yaml'
       - name: Upload Bandit Report

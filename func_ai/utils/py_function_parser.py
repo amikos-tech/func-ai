@@ -3,7 +3,13 @@ import inspect
 import re
 
 
-def type_mapping(dtype):
+def type_mapping(dtype: type) -> str:
+    """
+    Map python types to json schema types
+
+    :param dtype:
+    :return:
+    """
     if dtype == float:
         return "number"
     elif dtype == int:
@@ -14,7 +20,13 @@ def type_mapping(dtype):
         return "string"
 
 
-def extract_params(doc_str: str):
+def extract_params(doc_str: str) -> dict[str, str]:
+    """
+    Parse the docstring to get the descriptions for each parameter in dict format
+
+    :param doc_str:
+    :return:
+    """
     # split doc string by newline, skipping empty lines
     params_str = [line for line in doc_str.split("\n") if line.strip()]
     params = {}
@@ -31,7 +43,13 @@ def extract_params(doc_str: str):
     return params
 
 
-def func_to_json(func):
+def func_to_json(func) -> dict[str, any]:
+    """
+    Convert a function to a json schema
+
+    :param func: Python function
+    :return:
+    """
     # Check if the function is a functools.partial
     if isinstance(func, functools.partial) or isinstance(func, functools.partialmethod):
         fixed_args = func.keywords
