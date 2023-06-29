@@ -46,3 +46,9 @@ def test_user_openai_schema():
     """
 
 ```
+
+## Inspiration
+
+- https://github.com/jxnl/openai_function_call
+- https://github.com/rizerphe/openai-functions
+- https://github.com/aurelio-labs/funkagent

@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 from abc import abstractmethod
+from enum import Enum
 from typing import Any
 
 import openai
@@ -234,20 +235,29 @@ class OpenAISchema(BaseModel):
         :return:
         """
 
-        default = f"Default value: {field_info.default}" if not field_info.required else ""
+        default = f". Default value: {str(field_info.default)}" if not field_info.required else ""
         description = field_info.field_info.description
         if description:
             description = description.replace("\n", " ")
         else:
             description = ""
+        _enum_values = ""
+        if issubclass(field_info.outer_type_, Enum):
+            _enum_values = ". Enum: " + ",".join([f"{_enum.name}" for _enum in field_info.outer_type_])
         return {
-            "description": f"{description}. {default}",
+            "description": f"{description}{default}{_enum_values}",
             "type": type_mapping(field_info.outer_type_)
         }
 
     @classmethod
     def from_response(cls, completion, throw_error=True):
+        """
+        Returns an instance of the class from LLM completion response
 
+        :param completion: completion response from LLM
+        :param throw_error:  whether to throw error if function call is not present
+        :return:
+        """
         if throw_error:
             assert "function_call" in completion, "No function call detected"
             assert (
@@ -260,6 +270,14 @@ class OpenAISchema(BaseModel):
 
     @classmethod
     def from_prompt(cls, prompt: str, llm_interface: LLMInterface, throw_error=True):
+        """
+        Returns an instance of the class from LLM prompt
+
+        :param prompt: User prompt
+        :param llm_interface: LLM interface
+        :param throw_error: whether to throw error if function call is not present
+        :return:
+        """
         completion = llm_interface.send(prompt, functions=[cls.openai_schema])
         # print(llm_interface.get_conversation())
         # TODO add crud interface functions here
