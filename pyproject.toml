@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "func-ai"
-version = "0.0.1"
+version = "0.0.2"
 description = "AI Functional Catalog - OpenAI functions on steriods"
 authors = ["Trayan Azarov <trayan.azarov@amikos.tech>"]
 readme = "README.md"
@@ -22,6 +22,7 @@ fastapi = "^0.98.0"
 pyyaml = "^6.0"
 jsonschema = "^4.17.3"
 python-dotenv = "^1.0.0"
+tenacity = "^8.2.2"
 
 
 [tool.poetry.group.test.dependencies]
