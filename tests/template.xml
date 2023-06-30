@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+               xmlns:example="http://www.example.com/namespace">
+    <soap:Header>
+        <example:Authentication>
+            <example:Username>your_username</example:Username>
+            <example:Password>your_password</example:Password>
+        </example:Authentication>
+    </soap:Header>
+    <soap:Body>
+        <example:RequestData>
+            <example:id>{{ID}}</example:id>
+            <example:name>{{NAME}}</example:name>
+        </example:RequestData>
+    </soap:Body>
+</soap:Envelope>
