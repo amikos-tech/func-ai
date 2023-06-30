@@ -3,6 +3,7 @@
 Your OpenAI function calling on steroids
 
 Features:
+
 - Index any python function and use it in your AI workflows
 - Index any CLI command and use it in your AI workflows
 - Index any API endpoint and use it in your AI workflows
@@ -21,15 +22,15 @@ With poetry:
 poetry add func-ai
 ```
 
-
 ## Usage
 
-### Class Mapping
+### Pydantic Class Mapping
 
 ```python
 from pydantic import Field
 
 from func_ai.utils.llm_tools import OpenAIInterface, OpenAISchema
+
 
 class User(OpenAISchema):
     """
@@ -46,6 +47,47 @@ def test_user_openai_schema():
     """
 
 ```
+
+### OpenAPI Mapping
+
+```python
+import json
+
+from dotenv import load_dotenv
+
+from func_ai.utils.llm_tools import OpenAIInterface
+from func_ai.utils.openapi_function_parser import get_spec_from_url, parse_spec, call_api
+
+load_dotenv()
+spec = get_spec_from_url('http://petstore.swagger.io/v2/swagger.json')
+_funcs = parse_spec(spec)
+print(f"Function to all {_funcs['getPetById']}")
+inf = OpenAIInterface()
+resp = inf.send(
+    # prompt="Add new pet named Rocky with following photoUrl: http://rocky.me/pic.png. Tag the Rocky with 'dog' and 'pet'",
+    prompt="Get pet with id 10",
+    functions=[_funcs['getPetById']['func']])
+print(f"LLM Response: {resp}")
+if "function_call" in resp:
+    fc = resp["function_call"]
+    call_api(fc, spec, _funcs)
+"""
+Function to all {'details': {'name': 'getPetById', 'description': 'Returns a single pet', 'parameters': [{'name': 'petId', 'in': 'path', 'description': 'ID of pet to return', 'required': True, 'type': 'integer', 'format': 'int64'}], 'summary': 'Find pet by ID', 'method': 'get', 'path': '/pet/{petId}'}, 'func': {'name': 'getPetById', 'description': 'Find pet by IDReturns a single pet', 'parameters': {'type': 'object', 'properties': {'petId': {'description': 'ID of pet to return', 'type': 'string', 'in': 'path'}}, 'required': ['petId']}}}
+LLM Response: {
+"role": "assistant",
+"content": null,
+"function_call": {
+ "name": "getPetById",
+ "arguments": "{\n  \"petId\": \"10\"\n}"
+}
+}
+Calling getPetById - get https://petstore.swagger.io/v2/pet/{petId}
+2023-06-30 07:57:40,306 - urllib3.connectionpool - DEBUG - https://petstore.swagger.io:443 "GET /v2/pet/10 HTTP/1.1" 200 None
+{"id":10,"category":{"id":10,"name":"sample string"},"name":"doggie","photoUrls":[],"tags":[],"status":"pending"}
+"""
+```
+
+> Note: the above is pretty naive implementation of OpenAPI parsing and calling. It is not production ready.
 
 ## Inspiration
 

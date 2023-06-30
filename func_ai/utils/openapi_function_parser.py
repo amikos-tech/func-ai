@@ -87,26 +87,57 @@ def parse_spec(spec):
     return _funcs
 
 
-if __name__ == '__main__':
-    load_dotenv()
-    spec = get_spec_from_url('http://petstore.swagger.io/v2/swagger.json')
-    _funcs = parse_spec(spec)
-    print(_funcs['addPet'])
-    # print(spec)
-    inf = OpenAIInterface()
-    resp = inf.send(
-        prompt="Add new pet named Rocky with following photoUrl: http://rocky.me/pic.png. Tag the Rocky with 'dog' and 'pet'",
-        functions=[_funcs['addPet']['func']])
-    if "function_call" in resp:
-        fc = resp["function_call"]
-        f_name = fc["name"]
-        f_args = json.loads(fc["arguments"])
-        _url = f"https://{spec['host']}{spec['basePath']}{_funcs[f_name]['details']['path']}"
-        print(f"Calling {f_name} - {_funcs[f_name]['details']['method']} {_url}")
-        if _funcs[f_name]['details']['method'] == "post":
-            print(f_args['body'])
-            api_resp = requests.post(_url, json=json.loads(f_args['body']),
-                                     headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
-            print(api_resp)
+def _coerce_type(value, type):
+    if type == "integer":
+        return int(value)
+    if type == "number":
+        return float(value)
+    if type == "boolean":
+        return bool(value)
+    return value
 
-    # print(resp)
+
+def call_api(llm_function_call: dict, spec: dict, _funcs: dict):
+    """
+    Calls the API with the given function call
+
+    :param llm_function_call:
+    :param spec:
+    :param _funcs:
+    :return:
+    """
+    f_name = llm_function_call["name"]
+    f_args = json.loads(llm_function_call["arguments"])
+    _url = f"https://{spec['host']}{spec['basePath']}{_funcs[f_name]['details']['path']}"
+    print(f"Calling {f_name} - {_funcs[f_name]['details']['method']} {_url}")
+    _body_params = [param for param in _funcs[f_name]['details']['parameters'] if
+                    param['in'] == 'body']
+    _path_params = [param for param in _funcs[f_name]['details']['parameters'] if
+                    param['in'] == 'path']
+    _query_params = [param for param in _funcs[f_name]['details']['parameters'] if
+                     param['in'] == 'query']
+    if len(_path_params):
+        _url = _url.format(
+            **{param['name']: _coerce_type(f_args[param['name']], param['type']) for param in _path_params})
+    if len(_query_params):
+        _url += "?" + "&".join(
+            [f"{param['name']}={f_args[param['name']]}" for param in _query_params])
+    _body_param_name = None if len(_body_params) == 0 else _body_params[0]['name']
+    api_resp = None
+    # TODO headers should comply with the spec
+    if _funcs[f_name]['details']['method'] == "post":
+        api_resp = requests.post(_url, json=json.loads(f_args[_body_param_name]),
+                                 headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    if _funcs[f_name]['details']['method'] == "put":
+        api_resp = requests.put(_url, json=json.loads(f_args[_body_param_name]),
+                                headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    if _funcs[f_name]['details']['method'] == "patch":
+        api_resp = requests.patch(_url, json=json.loads(f_args[_body_param_name]),
+                                  headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    if _funcs[f_name]['details']['method'] == "get":
+        api_resp = requests.get(_url,
+                                headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    return {
+        "status_code": api_resp.status_code,
+        "response": api_resp.text
+    }
