@@ -48,8 +48,8 @@ class OpenAIConversationStore(ConversationStore):
 
     def add_system_message(self, message: str):
         # remove any existing system messages
-        self.conversation = [x for x in self.conversation if "system" not in x.keys()]
-        self.conversation.append({"role": "system", "content": message})
+        self.conversation = [x for x in self.conversation if x['role'] != 'system']
+        self.conversation.insert(0, {"role": "system", "content": message})
 
 
 class LLMInterface(BaseModel):
@@ -206,6 +206,7 @@ class OpenAIInterface(LLMInterface):
         self.usage[model]["prompt_tokens"] += api_response['usage']['prompt_tokens']
         self.usage[model]["completion_tokens"] += api_response['usage']['completion_tokens']
         self.usage[model]["total_tokens"] += api_response['usage']['total_tokens']
+
 
 
 class OpenAISchema(BaseModel):
