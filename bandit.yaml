@@ -1,0 +1,4 @@
+# FILE: bandit.yaml
+exclude_dirs: ['tests', 'docs', 'build', 'dist', '.git', '.tox', '.venv', 'venv', 'env']
+tests: []
+skips: []
