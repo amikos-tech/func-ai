@@ -124,3 +124,61 @@ def test_jinja_template_object():
     Name: John 
     Age: 20
     """
+
+
+def test_jinja_template_object_complex_sentence():
+    load_dotenv()
+    ji = JinjaOpenAITemplateFunction.from_string_template("Name: {{ NAME }} \n Age: {{ AGE }}", OpenAIInterface())
+    resp = ji.render_from_prompt("His name is John, He's born in Sofia and he's born 1983. We're in 2023.")
+    print(resp)
+    assert "Name: John" in resp
+    assert "Age: 40" in resp
+    # prints
+    """
+    Name: John 
+    Age: 20
+    """
+
+
+def test_jinja_template_object_with_jinja_function():
+    load_dotenv()
+    ji = JinjaOpenAITemplateFunction.from_string_template("Name: {{ NAME |upper}} \n Age: {{ AGE }}", OpenAIInterface())
+    resp = ji.render_from_prompt("John is 20 years old")
+    assert "Name: JOHN" in resp
+    assert "Age: 20" in resp
+    print(resp)
+    # prints
+    """
+    Name: JOHN 
+    Age: 20
+    """
+
+
+def assert_is_digit(x):
+    assert x.isdigit()
+    return x
+
+
+def test_jinja_template_object_with_filters_function():
+    load_dotenv()
+    ji = JinjaOpenAITemplateFunction.from_string_template("Name: {{ NAME }} \n Age: {{ AGE |validate_digit}}",
+                                                          OpenAIInterface(),
+                                                          filters={"validate_digit": assert_is_digit})
+    resp = ji.render_from_prompt("John is 20y")
+    print(resp)
+    assert "Name: John" in resp
+    assert "Age: 20" in resp
+    # prints
+    """
+    Name: John 
+    Age: 20
+    """
+
+
+def test_single_prompt():
+    load_dotenv()
+    llm = OpenAIInterface()
+    _resp = llm.send(
+        prompt="Create a user with name John and age 20\n Render as `Name: {{ NAME }} \n Age: {{ AGE }}`")
+
+    print(_resp['content'])

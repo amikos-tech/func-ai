@@ -13,6 +13,8 @@ class JinjaOpenAITemplateFunction:
     def __init__(self, environment: Environment, llm_interface: LLMInterface, **kwargs):
         self._lm_interface = llm_interface
         self._environment = environment
+        if "filters" in kwargs and isinstance(kwargs["filters"], dict):
+            self._environment.filters = kwargs["filters"]
         # self._lm_interface.conversation_store.add_system_message("""You are a code helper. Your goal is to help the user to convert a jinja template into a list of parameters.
         #
         # User will provide a jinja template as input.
