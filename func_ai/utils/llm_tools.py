@@ -1,3 +1,7 @@
+"""
+A module for interacting with the Language Learning Model
+"""
+import functools
 import json
 import logging
 import os
@@ -125,6 +129,15 @@ class LLMInterface(BaseModel):
         """
         return self.conversation_store.get_conversation()
 
+    def add_conversation_message(self, message: any) -> "LLMInterface":
+        """
+        Adds a message to the conversation
+        :param message:
+        :return:
+        """
+        self.conversation_store.add_message(message)
+        return self
+
 
 class OpenAIInterface(LLMInterface):
     """
@@ -208,7 +221,6 @@ class OpenAIInterface(LLMInterface):
         self.usage[model]["total_tokens"] += api_response['usage']['total_tokens']
 
 
-
 class OpenAISchema(BaseModel):
     @classmethod
     @property
@@ -283,3 +295,151 @@ class OpenAISchema(BaseModel):
         # print(llm_interface.get_conversation())
         # TODO add crud interface functions here
         return cls.from_response(completion, throw_error)
+
+
+class OpenAIFunctionWrapper(object):
+    """
+    A wrapper class for OpenAI functions.
+    """
+
+    def __init__(self, llm_interface: LLMInterface, name: str, description: str, parameters: dict[str, any],
+                 func: callable, **kwargs) -> None:
+        """
+        Initializes the OpenAI function wrapper
+        :param llm_interface:
+        :param name:
+        :param description:
+        :param parameters:
+        :param func:
+        :param kwargs: All these are treated as metadata that can be used by other tooling to augment the function
+        """
+        self.llm_interface = llm_interface
+        self._name = name
+        self._description = description
+        assert "required" in parameters, "Required field not present in parameters"
+        self._parameters = parameters
+        assert callable(func) or isinstance(func, functools.partial), "Function must be callable"
+        self.func = functools.partial(func, action=self)
+        self._metadata = kwargs
+        self._llm_calls = []
+
+    @property
+    def name(self) -> str:
+        """
+        Returns the name of the function
+
+        :return: name of the function
+        """
+        return self._name
+
+    @property
+    def description(self) -> str:
+        """
+        Returns the description of the function
+
+        :return: description of the function
+        """
+        return self._description
+
+    @property
+    def parameters(self) -> dict[str, any]:
+        """
+        Returns the parameters of the function
+
+        :return: parameters of the function
+        """
+        return self._parameters
+
+    def call(self, **kwargs) -> dict[str, any]:
+        """
+        Calls the function with the given arguments
+
+        :param kwargs: arguments to be passed to the function
+        :return:
+        """
+        return self.func(**kwargs)
+
+    @property
+    def metadata(self) -> dict[str, any]:
+        """
+        Returns the metadata of the function
+
+        :return: dict containing the metadata
+        """
+        return self._metadata
+
+    @property
+    def schema(self) -> dict[str, any]:
+        """
+        Returns the schema of the function that can be passed to OpenAI API
+
+        :return: dict containing the schema
+        """
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+        }
+
+    def __str__(self) -> str:
+        return f"{self.schema}"
+
+    def __repr__(self):
+        return f"{self.schema}"
+
+    @property
+    def last_call(self) -> dict[str, any]:
+        """
+        Returns the last response from the function call
+
+        :return: dict containing the last response
+        """
+        return self._llm_calls[-1]
+
+    @property
+    def calls(self) -> list[dict[str, any]]:
+        """
+        Returns the list of responses from the function call
+
+        :return: list containing the responses
+        """
+        return self._llm_calls
+
+    def from_response(self, llm_response: dict[str, any]) -> "OpenAIFunctionWrapper":
+        """
+        Returns an instance of the class from LLM completion response
+
+        :param llm_response: completion response from LLM
+        :return: The response from the function call
+        """
+        if "function_call" not in llm_response:
+            raise ValueError(f"No function call detected: {llm_response}")
+        if llm_response["function_call"]["name"] != self.name:
+            raise ValueError(f"Function name does not match: {llm_response}")
+        try:
+            _func_response = self.func(**json.loads(llm_response["function_call"]["arguments"]))
+        except Exception as e:
+            _func_response = f"Error: {repr(e)}"
+            traceback.print_exc()
+        _function_call_llm_response = {
+            "role": "function",
+            "name": self.name,
+            "content": f"{_func_response}",
+        }
+        self._llm_calls.append({
+            "function_call": llm_response["function_call"],
+            "function_response": _function_call_llm_response,
+        })
+        self.llm_interface.add_conversation_message(_function_call_llm_response)
+        return self
+
+    def from_prompt(self, prompt: str, **kwargs) -> "OpenAIFunctionWrapper":
+        """
+        Returns an instance of the class from LLM prompt
+
+        :param prompt: User prompt
+        :param kwargs: arguments to be passed to the function
+        :return: The response from the function call
+        """
+        self.from_response(self.llm_interface.send(prompt, functions=[self.schema]))
+        return self
