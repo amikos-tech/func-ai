@@ -87,12 +87,14 @@ def func_to_json(func) -> dict[str, any]:
                      argspec.args[i] not in inspect.getfullargspec(_func).defaults and argspec.args[
                          i] not in fixed_args.keys()]
     # then return everything in dict
+    #TODO: Move this to OpenAIFunctionWrapper
     return {
         "name": func_name,
         "description": func_description,
         "parameters": {
             "type": "object",
-            "properties": params
+            "properties": params,
+            "required": _required
         },
-        "required": _required
+
     }

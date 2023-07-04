@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "func-ai"
-version = "0.0.6"
+version = "0.0.8"
 description = "AI Functional Catalog - OpenAI functions on steriods"
 authors = ["Trayan Azarov <trayan.azarov@amikos.tech>"]
 readme = "README.md"

@@ -39,6 +39,7 @@ class JinjaOpenAITemplateFunction:
         # Get the undeclared variables
         _template_vars = meta.find_undeclared_variables(ast)
         _response = self._lm_interface.send(prompt=prompt,
+                                            #TODO: Move this to OpenAIFunctionWrapper
                                             functions=[{"name": "render_template",
                                                         "description": "Render a template with given parameters",
                                                         "parameters": {
@@ -47,7 +48,8 @@ class JinjaOpenAITemplateFunction:
                                                                                "description": f"{k}"} for
                                                                            k
                                                                            in _template_vars},
-                                                            "required": list(_template_vars)}}])
+                                                            "required": list(
+                                                                _template_vars)}}])  # TODO this is a bug should be moved inside parameters
         if "function_call" in _response:
             args = json.loads(_response["function_call"]["arguments"])
             return self._environment.get_template(template_name).render(**args)
