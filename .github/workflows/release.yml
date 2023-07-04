@@ -30,7 +30,7 @@ jobs:
           git config --global user.name "Release Bot"
           git config --global user.email "opensource@amikos.tech"
           git commit -m "Change version to ${{ github.event.release.tag_name }}" --allow-empty
-          git push origin HEAD:${{ inputs.BRANCH }}
+          git push
         shell: bash
 
       - name: Publish package to PyPI
