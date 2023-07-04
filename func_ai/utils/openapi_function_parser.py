@@ -234,6 +234,14 @@ class OpenAPISpecOpenAIWrapper(object):
         """
         return self._funcs
 
+    def to_dict(self) -> dict[str, any]:
+        """
+        Return the dictionary of functions that can be called
+
+        :return:
+        """
+        return {fn: f.to_dict() for fn, f in self._funcs.items()}
+
     def get_operation(self, name: str) -> OpenAIFunctionWrapper:
         """
         Get a function by name

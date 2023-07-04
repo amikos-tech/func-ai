@@ -384,8 +384,21 @@ class OpenAIFunctionWrapper(object):
     def __str__(self) -> str:
         return f"{self.schema}"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.schema}"
+
+    def to_dict(self) -> dict[str, any]:
+        """
+        Returns a dict representation of the function
+
+        :return: dict containing the function
+        """
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+            "metadata": self.metadata,
+        }
 
     @property
     def last_call(self) -> dict[str, any]:
