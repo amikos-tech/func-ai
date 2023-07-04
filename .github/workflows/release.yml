@@ -3,7 +3,8 @@ name: Publish Python Package
 on:
   release:
     types: [created]
-
+permissions:
+  actions: write
 jobs:
   build-n-publish:
     runs-on: ubuntu-latest
