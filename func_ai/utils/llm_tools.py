@@ -221,6 +221,7 @@ class OpenAIInterface(LLMInterface):
         self.usage[model]["total_tokens"] += api_response['usage']['total_tokens']
 
 
+
 class OpenAISchema(BaseModel):
     @classmethod
     @property

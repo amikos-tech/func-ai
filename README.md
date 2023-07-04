@@ -102,6 +102,24 @@ Age: 20
 """
 ```
 
+### Jinja2 Templating
+
+```python
+from dotenv import load_dotenv
+from func_ai.utils.jinja_template_functions import JinjaOpenAITemplateFunction
+from func_ai.utils.llm_tools import OpenAIInterface
+load_dotenv()
+ji = JinjaOpenAITemplateFunction.from_string_template("Name: {{ NAME }} \n Age: {{ AGE }}", OpenAIInterface())
+resp = ji.render_from_prompt("John is 20 years old")
+assert "Name: John" in resp
+assert "Age: 20" in resp
+# prints
+"""
+Name: John 
+Age: 20
+"""
+```
+
 ## Inspiration
 
 - https://github.com/jxnl/openai_function_call
