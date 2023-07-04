@@ -23,16 +23,16 @@ jobs:
           curl -sSL https://install.python-poetry.org | python3 -
 
         shell: bash
-      - name: Version bump
-        run: |
-          set -e
-          poetry version ${{ github.event.release.tag_name }}
-          git add ./pyproject.toml
-          git config --global user.name "Release Bot"
-          git config --global user.email "opensource@amikos.tech"
-          git commit -m "Change version to ${{ github.event.release.tag_name }}" --allow-empty
-          git push origin HEAD:main
-        shell: bash
+#      - name: Version bump
+#        run: |
+#          set -e
+#          poetry version ${{ github.event.release.tag_name }}
+#          git add ./pyproject.toml
+#          git config --global user.name "Release Bot"
+#          git config --global user.email "opensource@amikos.tech"
+#          git commit -m "Change version to ${{ github.event.release.tag_name }}" --allow-empty
+#          git push origin HEAD:main
+#        shell: bash
 
       - name: Publish package to PyPI
         run: |
