@@ -1,16 +1,16 @@
 import inspect
-import json
+import logging
 
 import chromadb
 from chromadb import Settings
 from chromadb.utils import embedding_functions
 from ulid import ULID
 
+from func_ai.utils.llm_tools import OpenAIFunctionWrapper
 from func_ai.utils.py_function_parser import func_to_json
 
-openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-    model_name="text-embedding-ada-002"
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class FunctionIndexer(object):
@@ -18,18 +18,23 @@ class FunctionIndexer(object):
     Index functions
     """
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, collection_name: str = "function_index") -> None:
         """
         Initialize function indexer
-        :param db_path:
+        :param db_path: The path where to store the database
+        :param collection_name: The name of the collection
         """
         self._client = chromadb.Client(Settings(
             chroma_db_impl="duckdb+parquet",
             persist_directory=db_path  # Optional, defaults to .chromadb/ in the current directory
         ))
+        self.collection_name = collection_name
         self._fns_map = {}
         self._fns_index_map = {}
         self._open_ai_function_map = []
+        self.openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+            model_name="text-embedding-ada-002"
+        )
 
     def reset_function_index(self) -> None:
         """
@@ -50,8 +55,8 @@ class FunctionIndexer(object):
         """
 
         _ai_fun_map, _fns_map, _fns_index_map = FunctionIndexer.get_functions(functions)
-        collection = self._client.get_or_create_collection(name="function_index", metadata={"hnsw:space": "cosine"},
-                                                           embedding_function=openai_ef)
+        collection = self._client.get_or_create_collection(name=self.collection_name, metadata={"hnsw:space": "cosine"},
+                                                           embedding_function=self.openai_ef)
         self._fns_map.update(_fns_map)
         self._open_ai_function_map.extend(_ai_fun_map)
         self._fns_index_map.update(_fns_index_map)
@@ -61,6 +66,22 @@ class FunctionIndexer(object):
                                    "module": inspect.getmodule(_fns_map[f]).__name__} for f, v in
                                   _fns_index_map.items()],
                        ids=[str(ULID()) for _ in _fns_index_map.values()])
+
+    def index_wrapper_functions(self, functions: list[OpenAIFunctionWrapper]):
+        """
+        Index one or more functions
+        Note: Function uniqueness is not checked in this version
+        :param functions:
+        :return:
+        """
+        collection = self._client.get_or_create_collection(name=self.collection_name,
+                                                           metadata={"hnsw:space": "cosine"},
+                                                           embedding_function=self.openai_ef)
+        # print(f"Docs: {collection.get()}")
+        collection.add(documents=[f.description for f in functions],
+                       metadatas=[{"name": f.name, **f.metadata_dict} for f in
+                                  functions],
+                       ids=[str(ULID()) for _ in functions])
 
     def rehydrate_function_map(self, functions: list[callable]) -> None:
         """
@@ -92,13 +113,14 @@ class FunctionIndexer(object):
         :return:
         """
         _response = []
-        collection = self._client.get_or_create_collection(name="function_index", metadata={"hnsw:space": "cosine"},
-                                                           embedding_function=openai_ef)
-        print(collection.get())
+        collection = self._client.get_or_create_collection(name=self.collection_name,
+                                                           metadata={"hnsw:space": "cosine"},
+                                                           embedding_function=self.openai_ef)
+        # print(collection.get())
         res = collection.query(query_texts=[query], n_results=max_results)
         print(f"Got response for sematic search: {res}")
         for r in res['metadatas'][0]:
-            _response.append(self._fns_map[r['name']])
+            _response.append(r['name'])
         return _response
 
     @staticmethod
