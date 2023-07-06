@@ -1,10 +1,15 @@
 """ doc """
 import functools
+import os
 
 import requests
 import json
 
+from func_ai.function_indexer import FunctionIndexer
 from func_ai.utils.llm_tools import OpenAIInterface, OpenAIFunctionWrapper
+from func_ai.utils.py_function_parser import func_to_json
+
+curdir = os.path.dirname(os.path.abspath(__file__))
 
 
 def get_spec_from_url(url):
@@ -58,6 +63,11 @@ def get_operation_details(operation, path):
         "parameters": operation['spec'].get('parameters'),
         "summary": operation['spec'].get('summary', ''),
         "method": operation['method'],
+        "consumes": operation['spec'].get('consumes', []),
+        "produces": operation['spec'].get('produces', []),
+        "responses": operation['spec'].get('responses', {}),
+        "security": operation['spec'].get('security', []),
+        "tags": operation['spec'].get('tags', []),
         "path": path,
     }
 
@@ -135,7 +145,8 @@ def parse_spec(spec) -> dict[str, dict]:
         operations = get_operations_from_path_item(path_item)
         for operation in operations:
             details = get_operation_details(operation, path)
-            _funcs[details['name']] = {"details": details, "func": get_func_details(details, _defs)}
+            _funcs[details['name']] = {"details": details, "func": get_func_details(details, _defs),
+                                       "operation_raw": operation}
     return _funcs
 
 
@@ -183,15 +194,64 @@ def _api_call(action: OpenAIFunctionWrapper, **kwargs):
     }
 
 
+def _read_system_prompt_file(path: str) -> str:
+    """
+    Read the system prompt file
+
+    :param path:
+    :return:
+    """
+    with open(path, "r") as f:
+        return f.read()
+
+
+## QA Utility Functions
+def list_available_functions(spec_wrapper: "OpenAPISpecOpenAIWrapper", **kwargs) -> str:
+    """
+    List the available API operations
+a
+    :param spec_wrapper: The OpenAPI Spec Wrapper
+    :return:
+    """
+    return "Available functions:\n" + "\n".join([f"- {k}: {v}" for k, v in spec_wrapper.operations_summary.items()])
+
+
+def get_operation_function_info(operation_name: str, spec_wrapper: "OpenAPISpecOpenAIWrapper", **kwargs) -> dict[
+    str, any]:
+    """a
+    Returns the full information about an operation including all parameters
+
+    :param operation_name: The name of the operation
+    :param spec_wrapper: The OpenAPI Spec Wrapper
+    :return:
+    """
+
+    return spec_wrapper.get_operation(operation_name).to_dict()
+
+
 class OpenAPISpecOpenAIWrapper(object):
     """
     Class that wrap around the OpenAPI specification and provides a set of methods to interact with it using OpenAI
     function calling.
     """
 
-    def __init__(self, spec: dict[any, any], llm_interface: OpenAIInterface, **kwargs) -> None:
+    def __init__(self, spec: dict[any, any],
+                 llm_interface: OpenAIInterface,
+                 source=None,
+                 index: bool = False, **kwargs) -> None:
+        """
+        Initialize the OpenAPI wrapper
+        Note: When index=True the LLM system message will be overwritten with the system message from the spec QA system prompt file
+
+        :param spec: The OpenAPI specification
+        :param llm_interface: The LLM Interface
+        :param source: The source of the spec
+        :param index: Whether to index the spec (default: False) - this will put all operations in a vector store and make them searchable
+        :param kwargs: Additional arguments
+        """
         self.spec = spec
-        self.inf = llm_interface
+        self.llm_interface = llm_interface
+        self.source = source
         _funcs = parse_spec(spec)
         self._function_calls = []
         self._url_spec = {
@@ -202,12 +262,13 @@ class OpenAPISpecOpenAIWrapper(object):
             "template_url": "{default_scheme}://{host}{base_path}{path}",
         }
         self._funcs = {
-            fn: OpenAIFunctionWrapper(llm_interface=self.inf,
+            fn: OpenAIFunctionWrapper(llm_interface=self.llm_interface,
                                       name=fn,
                                       description=f['func']['description'],
                                       parameters=f['func']['parameters'],
                                       func=functools.partial(
                                           _api_call, ),
+                                      # metadata
                                       **{
                                           "url_spec": self._url_spec,
                                           "body_params": [param for param in f['details']['parameters']
@@ -224,6 +285,13 @@ class OpenAPISpecOpenAIWrapper(object):
                                           **kwargs
                                       }) for
             fn, f in _funcs.items()}
+        if index:
+            self.indexer = FunctionIndexer("./tests/wrap_index")
+            # TODO: here we're resetting the index every time we create a new wrapper. In the future we should be able to index the same spec multiple times
+            self.indexer.reset_function_index()
+            self.indexer.index_wrapper_functions([f for k, f in self.operations.items()])
+            self.llm_interface.conversation_store.add_system_message(
+                _read_system_prompt_file(os.path.join(curdir, 'api_qa_system_prompt.txt')))
 
     @property
     def operations(self) -> dict[str, any]:
@@ -233,6 +301,16 @@ class OpenAPISpecOpenAIWrapper(object):
         :return:
         """
         return self._funcs
+
+    @property
+    def operations_summary(self) -> dict[str, str]:
+        """
+        Return a summary of the operations in the form of a dictionary
+        where the key is the operation name and the value is the description
+
+        :return: A dictionary of operations
+        """
+        return {fn: f.description for fn, f in self._funcs.items()}
 
     def to_dict(self) -> dict[str, any]:
         """
@@ -252,19 +330,20 @@ class OpenAPISpecOpenAIWrapper(object):
         return self[name]
 
     @classmethod
-    def from_url(cls, url: str, llm_interface: OpenAIInterface) -> "OpenAPISpecOpenAIWrapper":
+    def from_url(cls, url: str, llm_interface: OpenAIInterface, **kwargs) -> "OpenAPISpecOpenAIWrapper":
         """
         Create an instance of the class from a URL
 
         :param url: The URL to load
         :param llm_interface: The interface to use
+        :param kwargs: Additional arguments
         :return:
         """
         spec = get_spec_from_url(url)
-        return cls(spec, llm_interface=llm_interface)
+        return cls(spec, llm_interface=llm_interface, source={"url": url, "type": "url"}, **kwargs)
 
     @classmethod
-    def from_file(cls, file: str, llm_interface: OpenAIInterface) -> "OpenAPISpecOpenAIWrapper":
+    def from_file(cls, file: str, llm_interface: OpenAIInterface, **kwargs) -> "OpenAPISpecOpenAIWrapper":
         """
         Create an instance of the class from a file
 
@@ -275,7 +354,7 @@ class OpenAPISpecOpenAIWrapper(object):
         with open(file) as f:
             spec = json.load(f)
 
-        return cls(spec, llm_interface=llm_interface)
+        return cls(spec, llm_interface=llm_interface, source={"url": file, "type": "file"}, **kwargs)
 
     def __getitem__(self, item) -> OpenAIFunctionWrapper:
         """
@@ -312,3 +391,38 @@ class OpenAPISpecOpenAIWrapper(object):
         :return:
         """
         return self._function_calls
+
+    def api_qa(self, prompt: str, **kwargs) -> any:
+        """
+        Ask a question about the API
+        :param prompt: The prompt to use
+        :param kwargs: Additional arguments to pass to the prompt
+        :return: The result of the function call
+        """
+        # What operations does this API support?
+        _list_fun = OpenAIFunctionWrapper.from_python_function(
+            func=functools.partial(list_available_functions, spec_wrapper=self),
+            llm_interface=self.llm_interface, )
+        # What endpoints are available in this API?
+
+        # What are the mandatory parameters for operation X?
+        _fun_info = OpenAIFunctionWrapper.from_python_function(
+            func=functools.partial(get_operation_function_info, spec_wrapper=self),
+            llm_interface=self.llm_interface, )
+        # What are the optional parameters for operation X?
+
+        _f_map = {_list_fun.name: _list_fun,
+                  _fun_info.name: _fun_info, }
+        _llm_resp = self.llm_interface.send(prompt=prompt, functions=[k.schema for _, k in _f_map.items()], **kwargs)
+        # print(f"LLM Response: {_llm_resp}")
+        if "function_call" in _llm_resp:
+            _fcall = _f_map[_llm_resp["function_call"]["name"]].from_response(llm_response=_llm_resp).last_call[
+                'function_response']
+            # print(f"Function call: {_fcall}")
+            self.llm_interface.add_conversation_message(_fcall, update_llm=True, **kwargs)
+            return self.llm_interface.conversation_store.get_last_message()['content']
+            # _llm_secondary_resp = self.llm_interface.send(prompt=prompt,
+            #                                               functions=[k.schema for _, k in _f_map.items()],
+            #                                               **kwargs)
+        else:
+            return _llm_resp['content']
