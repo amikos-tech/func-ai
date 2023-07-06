@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "func-ai"
-version = "0.0.8"
+version = "0.0.9"
 description = "AI Functional Catalog - OpenAI functions on steriods"
 authors = ["Trayan Azarov <trayan.azarov@amikos.tech>"]
 readme = "README.md"
@@ -18,7 +18,7 @@ openai = "^0.27.8"
 requests = "^2.31.0"
 chromadb = "^0.3.26"
 python-ulid = "^1.1.0"
-fastapi = "^0.98.0"
+fastapi = "^0.99.1"
 pyyaml = "^6.0"
 jsonschema = "^4.17.3"
 python-dotenv = "^1.0.0"
