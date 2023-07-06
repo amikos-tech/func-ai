@@ -15,7 +15,8 @@ from tenacity import retry, wait_fixed, stop_after_attempt
 
 from pydantic import BaseModel, Field
 
-from func_ai.utils.py_function_parser import type_mapping
+from func_ai.utils.common import arg_in_func
+from func_ai.utils.py_function_parser import type_mapping, func_to_json
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -43,6 +44,13 @@ class ConversationStore(BaseModel):
         :return:
         """
         return self.conversation
+
+    def get_last_message(self) -> Any:
+        """
+        Returns the last message
+        :return:
+        """
+        return self.conversation[-1]
 
 
 class OpenAIConversationStore(ConversationStore):
@@ -129,14 +137,27 @@ class LLMInterface(BaseModel):
         """
         return self.conversation_store.get_conversation()
 
-    def add_conversation_message(self, message: any) -> "LLMInterface":
+    def add_conversation_message(self, message: any, update_llm: bool = False, **kwargs) -> "LLMInterface":
         """
         Adds a message to the conversation
-        :param message:
+        :param message: The message to add
+        :param update_llm: Whether to update the LLM with the new conversation
+        :param kwargs: Parameters to pass to the API
         :return:
         """
         self.conversation_store.add_message(message)
+        if update_llm:
+            self.update_llm_conversation(**kwargs)
         return self
+
+    def update_llm_conversation(self, **kwargs) -> "LLMInterface":
+        """
+        Sends the updated conversation to the LLM
+
+        :param kwargs: Parameters to pass to the API
+        :return:
+        """
+        raise NotImplementedError
 
 
 class OpenAIInterface(LLMInterface):
@@ -158,12 +179,15 @@ class OpenAIInterface(LLMInterface):
 
     @retry(stop=stop_after_attempt(3), reraise=True, wait=wait_fixed(1),
            retry_error_callback=lambda x: logger.warning(x))
-    def send(self, prompt: str, **kwargs) -> dict:
+    def update_llm_conversation(self, **kwargs) -> "OpenAIInterface":
+        """
+        Sends the updated conversation to the LLM
+
+        :param kwargs: Parameters to pass to the API
+        :return:
+        """
         _functions = kwargs.get("functions", None)
         _model = kwargs.get("model", self.model)
-        # print(type(self._conversation_store))
-        self.conversation_store.add_message({"role": "user", "content": prompt})
-        logger.debug(f"Prompt: {prompt}")
         try:
             if _functions:
                 response = openai.ChatCompletion.create(
@@ -199,11 +223,19 @@ class OpenAIInterface(LLMInterface):
             self.update_cost(_model, response)
             _response_message = response["choices"][0]["message"]
             self.conversation_store.add_message(_response_message)
-            return _response_message
+            return self
         except Exception as e:
             logger.error(f"Error: {e}")
             traceback.print_exc()
             raise e
+
+    def send(self, prompt: str, **kwargs) -> dict[str, any]:
+        # print(type(self._conversation_store))
+        self.conversation_store.add_message({"role": "user", "content": prompt})
+        logger.debug(f"Prompt: {prompt}")
+        response = self.update_llm_conversation(**kwargs)
+        logger.debug(f"Response: {response}")
+        return self.conversation_store.get_last_message()
 
     def load_cost_mapping(self, file_path: str) -> None:
         with open(file_path) as f:
@@ -219,7 +251,6 @@ class OpenAIInterface(LLMInterface):
         self.usage[model]["prompt_tokens"] += api_response['usage']['prompt_tokens']
         self.usage[model]["completion_tokens"] += api_response['usage']['completion_tokens']
         self.usage[model]["total_tokens"] += api_response['usage']['total_tokens']
-
 
 
 class OpenAISchema(BaseModel):
@@ -320,7 +351,10 @@ class OpenAIFunctionWrapper(object):
         assert "required" in parameters, "Required field not present in parameters"
         self._parameters = parameters
         assert callable(func) or isinstance(func, functools.partial), "Function must be callable"
-        self.func = functools.partial(func, action=self)
+        if arg_in_func(func, "action"):
+            self.func = functools.partial(func, action=self)
+        else:
+            self.func = func
         self._metadata = kwargs
         self._llm_calls = []
 
@@ -368,6 +402,15 @@ class OpenAIFunctionWrapper(object):
         :return: dict containing the metadata
         """
         return self._metadata
+
+    @property
+    def metadata_dict(self) -> dict[str, str]:
+        """
+        Returns the metadata of the function as a
+
+        :return:
+        """
+        return {k: str(v) for k, v in self._metadata.items()}
 
     @property
     def schema(self) -> dict[str, any]:
@@ -457,3 +500,16 @@ class OpenAIFunctionWrapper(object):
         """
         self.from_response(self.llm_interface.send(prompt, functions=[self.schema]))
         return self
+
+    @classmethod
+    def from_python_function(cls, func: callable, llm_interface: LLMInterface, **kwargs) -> "OpenAIFunctionWrapper":
+        """
+        Returns an instance of the class from Python function
+
+        :param func: Python function
+        :param llm_interface: LLM interface
+        :param kwargs: arguments to be passed to the function
+        :return:
+        """
+        _func = func_to_json(func)
+        return cls(llm_interface=llm_interface, func=func, **_func, **kwargs)
