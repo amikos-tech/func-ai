@@ -54,6 +54,15 @@ def func_with_optional_params_double_space_doc(a: str, b: str = "b"):
     return 1
 
 
+def function_with_return_description() -> str:
+    """
+    This function has a return description
+
+    :return: This is the return description explaining what it returns
+    """
+    return ""
+
+
 def test_func_to_json_func_with_no_params():
     """
     This function tests func_to_json with a function that has no parameters
@@ -265,3 +274,10 @@ def test_func_to_json_func_with_optional_params_double_space_doc():
         }
     }
     assert _json_fun["required"] == ["a"]
+
+
+def test_func_with_return():
+    _json_fun = func_to_json(function_with_return_description)
+    assert _json_fun["name"] == "function_with_return_description"
+    print(_json_fun["description"])
+    assert "This is the return description explaining what it returns" in _json_fun["description"]
