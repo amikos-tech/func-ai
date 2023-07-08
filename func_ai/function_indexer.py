@@ -105,11 +105,13 @@ class FunctionIndexer(object):
 
         return {f['name']: f['description'] for f in self._open_ai_function_map}
 
-    def find_functions(self, query: str, max_results: int = 2) -> callable:
+    def find_functions(self, query: str, max_results: int = 2, similarity_threshold: float = 1.0) -> callable:
         """
         Find functions by description
 
         :param query: Query string
+        :param max_results: Maximum number of results
+        :param similarity_threshold: Similarity threshold - a cut-off threshold for the similarity score - default is 1.0 (very loose match)
         :return:
         """
         _response = []
@@ -118,9 +120,11 @@ class FunctionIndexer(object):
                                                            embedding_function=self.openai_ef)
         # print(collection.get())
         res = collection.query(query_texts=[query], n_results=max_results)
-        print(f"Got response for sematic search: {res}")
-        for r in res['metadatas'][0]:
-            _response.append(r['name'])
+        print(f"Got results from sematic search: {res}")
+        for r in range(len(res['documents'][0])):
+            print(f"Distance: {res['distances'][0][r]} vs threshold: {similarity_threshold}")
+            if res['distances'][0][r] <= similarity_threshold:
+                _response.append(res['metadatas'][0][r]['name'])
         return _response
 
     @staticmethod
