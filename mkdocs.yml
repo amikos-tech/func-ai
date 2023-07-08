@@ -1,1 +1,3 @@
 site_name: AI Functtional Catalog
+theme:
+  name: material
