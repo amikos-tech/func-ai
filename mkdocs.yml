@@ -1,3 +1,39 @@
-site_name: AI Functtional Catalog
+site_name: AI Functional Catalog
+extra:
+  homepage: https://amikos.tech
 theme:
   name: material
+  icon:
+    logo: material/database-cog-outline
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - toc.follow
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+repo_name: amikos-tech/func-ai
+plugins:
+  - search:
+      lang: en
