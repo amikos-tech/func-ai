@@ -128,9 +128,9 @@ Let's break down the above snippet:
 
 !!! note "Non-Production Example"
 
-  The above is a naive example of how you can use the `func-ai` library to convert your python functions and use them
-  with OpenAI. `func-ai` offer much more advanced mechanisms to help you build a production ready code. Please check
-  other articles in the documentation to learn more or get in touch [with us](mailto:info@amikos.tech) if you need help.
+    The above is a naive example of how you can use the `func-ai` library to convert your python functions and use them
+    with OpenAI. `func-ai` offer much more advanced mechanisms to help you build a production ready code. Please check
+    other articles in the documentation to learn more or get in touch [with us](mailto:info@amikos.tech) if you need help.
 
 ## Working with `functools.partial`
 
