@@ -193,3 +193,66 @@ Result: Querying MySQL with query SELECT * FROM sales WHERE date >= '2021-01-01'
 The example above is very similar to our previous example except that this time we have fixed the `db_driver` parameter
 which gives you that very important security and privacy aspect especially when playing around with LLMs on the open
 internet.
+
+## Function Wrapper
+
+`func-ai` also offers a function wrapper that you can use to wrap your functions and expose them to OpenAI. The wrapper
+takes care of all the heavy lifting for you. Here is a very short example of how you can use the wrapper:
+
+```python
+from dotenv import load_dotenv
+from func_ai.utils import OpenAIFunctionWrapper, OpenAIInterface
+
+load_dotenv()
+
+
+def say_hello(name: str):
+  """
+  This is a function that says hello to the user
+
+  :param name: Name of the person to say hello to
+  :return:
+  """
+  print(f"Hello {name}!")
+
+
+_func_wrap = OpenAIFunctionWrapper.from_python_function(say_hello, OpenAIInterface())
+
+_func_wrap.from_prompt("Say hello to John")
+```
+
+The above snippet will print the following:
+
+```text
+Hello John!
+```
+
+Let's break down the above snippet:
+
+- First we import the `load_dotenv` function from the `dotenv` library. This is used to load the environment variables
+  from the `.env` file.
+- Next we import the `OpenAIFunctionWrapper` and `OpenAIInterface` classes from the `func_ai.utils` module.
+- Next we define a function called `say_hello` that takes a `name` parameter and prints `Hello {name}!` to the console.
+- Next we create an instance of the `OpenAIFunctionWrapper` class by calling the `from_python_function` method and
+  passing in the `say_hello` function and an instance of the `OpenAIInterface` class.
+- Finally we call the `from_prompt` method on the `OpenAIFunctionWrapper` instance and pass in the prompt that we want to
+  send to OpenAI.
+
+It is also possible to use partials with the wrapper like so:
+
+```python
+from functools import partial
+_func_wrap = OpenAIFunctionWrapper.from_python_function(partial(say_hello,name="World"), OpenAIInterface())
+
+_func_wrap.from_prompt("Say hello")
+```
+
+The above snippet will print the following:
+
+```text
+Hello World!
+```
+
+!!! note "Further Examples"
+    
+        For more examples check jupyter notebooks in the `tests/jupyter/` folder.
