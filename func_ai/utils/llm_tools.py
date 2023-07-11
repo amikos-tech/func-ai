@@ -477,6 +477,7 @@ class OpenAIFunctionWrapper(object):
             _func_response = self.func(**json.loads(llm_response["function_call"]["arguments"]))
         except Exception as e:
             _func_response = f"Error: {repr(e)}"
+            logger.warning(f"Failed to process function call: {llm_response}")
             traceback.print_exc()
         _function_call_llm_response = {
             "role": "function",
