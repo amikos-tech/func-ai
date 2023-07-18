@@ -1,7 +1,9 @@
 import inspect
 import logging
+import os
 
 import chromadb
+import openai
 from chromadb import Settings
 from chromadb.utils import embedding_functions
 from ulid import ULID
@@ -18,16 +20,19 @@ class FunctionIndexer(object):
     Index functions
     """
 
-    def __init__(self, db_path: str, collection_name: str = "function_index") -> None:
+    def __init__(self, db_path: str, collection_name: str = "function_index", **kwargs) -> None:
         """
         Initialize function indexer
         :param db_path: The path where to store the database
         :param collection_name: The name of the collection
+        :param kwargs: Additional arguments
         """
         self._client = chromadb.Client(Settings(
+            anonymized_telemetry=False,
             chroma_db_impl="duckdb+parquet",
             persist_directory=db_path  # Optional, defaults to .chromadb/ in the current directory
         ))
+        openai.api_key = kwargs.get("openai_api_key", os.getenv("OPENAI_API_KEY"))
         self.collection_name = collection_name
         self._fns_map = {}
         self._fns_index_map = {}
