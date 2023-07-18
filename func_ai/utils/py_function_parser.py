@@ -43,6 +43,20 @@ def extract_params(doc_str: str) -> dict[str, str]:
     return params
 
 
+def extract_return_description(docstring):
+    """
+    Extract the return description from a Python docstring.
+
+    :param docstring: The docstring to extract the return description from.
+    :return: The return description, or empty string if no return description is found.
+    """
+    match = re.search(r':return: (.*)', docstring)
+    if match:
+        return " " + match.group(1)
+    else:
+        return ""
+
+
 def func_to_json(func) -> dict[str, any]:
     """
     Convert a function to a json schema
@@ -68,6 +82,7 @@ def func_to_json(func) -> dict[str, any]:
     func_doc = inspect.getdoc(_func)
     # parse the docstring to get the description
     func_description = ''.join([line for line in func_doc.split("\n") if not line.strip().startswith(':')])
+    func_description += extract_return_description(func_doc)
     # parse the docstring to get the descriptions for each parameter in dict format
     param_details = extract_params(func_doc) if func_doc else {}
     # attach parameter types to params and exclude fixed args
@@ -87,7 +102,7 @@ def func_to_json(func) -> dict[str, any]:
                      argspec.args[i] not in inspect.getfullargspec(_func).defaults and argspec.args[
                          i] not in fixed_args.keys()]
     # then return everything in dict
-    #TODO: Move this to OpenAIFunctionWrapper
+    # TODO: Move this to OpenAIFunctionWrapper
     return {
         "name": func_name,
         "description": func_description,
