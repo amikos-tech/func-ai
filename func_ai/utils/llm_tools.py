@@ -2,6 +2,7 @@
 A module for interacting with the Language Learning Model
 """
 import functools
+import hashlib
 import json
 import logging
 import os
@@ -51,6 +52,13 @@ class ConversationStore(BaseModel):
         :return:
         """
         return self.conversation[-1]
+
+    def clear(self) -> None:
+        """
+        Clears the conversation
+        :return:
+        """
+        self.conversation = []
 
 
 class OpenAIConversationStore(ConversationStore):
@@ -350,13 +358,45 @@ class OpenAIFunctionWrapper(object):
         self._description = description
         assert "required" in parameters, "Required field not present in parameters"
         self._parameters = parameters
+        self.is_partial = False
         assert callable(func) or isinstance(func, functools.partial), "Function must be callable"
         if arg_in_func(func, "action"):
             self.func = functools.partial(func, action=self)
         else:
             self.func = func
+        if isinstance(func, functools.partial):
+            module_name = func.func.__module__
+            function_name = func.func.__qualname__  # use __qualname__ for nested functions
+            self.is_partial = True
+        else:
+            module_name = func.__module__
+            function_name = func.__qualname__  # use __qualname__ for nested functions
+        self._identifier = f"{module_name}.{function_name}"
+        if "<lambda>" in self._identifier:
+            raise ValueError("Cannot use lambda functions")
+        if "<locals>" in self._identifier:
+            raise ValueError("Cannot use nested functions")
+        self._hash = hashlib.sha1(f"{self._identifier}-{self._name}-{self._description}".encode()).hexdigest()
         self._metadata = kwargs
         self._llm_calls = []
+
+    @property
+    def identifier(self) -> str:
+        """
+        Returns the identifier of the function
+
+        :return: identifier of the function
+        """
+        return self._identifier
+
+    @property
+    def hash(self) -> str:
+        """
+        Returns the identifier of the function
+
+        :return: identifier of the function
+        """
+        return self._hash
 
     @property
     def name(self) -> str:
@@ -385,14 +425,14 @@ class OpenAIFunctionWrapper(object):
         """
         return self._parameters
 
-    def call(self, **kwargs) -> dict[str, any]:
+    def call(self, *args, **kwargs) -> dict[str, any]:
         """
         Calls the function with the given arguments
 
         :param kwargs: arguments to be passed to the function
         :return:
         """
-        return self.func(**kwargs)
+        return self.func(*args, **kwargs)
 
     @property
     def metadata(self) -> dict[str, any]:

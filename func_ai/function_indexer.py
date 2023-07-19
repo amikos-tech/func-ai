@@ -1,18 +1,25 @@
+"""
+Function indexer module is responsible for making functions searchable
+"""
+import importlib
 import inspect
 import logging
 import os
+from collections import namedtuple
 
 import chromadb
 import openai
 from chromadb import Settings
+from chromadb.api import EmbeddingFunction
 from chromadb.utils import embedding_functions
-from ulid import ULID
 
-from func_ai.utils.llm_tools import OpenAIFunctionWrapper
+from func_ai.utils.llm_tools import OpenAIFunctionWrapper, OpenAIInterface, LLMInterface
 from func_ai.utils.py_function_parser import func_to_json
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+SearchResult = namedtuple('SearchResult', ['name', 'wrapper', 'function', 'distance'])
 
 
 class FunctionIndexer(object):
@@ -20,25 +27,81 @@ class FunctionIndexer(object):
     Index functions
     """
 
-    def __init__(self, db_path: str, collection_name: str = "function_index", **kwargs) -> None:
+    def __init__(self, llm_interface: LLMInterface = OpenAIInterface(),
+                 chroma_client: chromadb.Client = chromadb.PersistentClient(settings=Settings(allow_reset=True)),
+                 embedding_function: EmbeddingFunction = None,
+                 collection_name: str = "function_index", **kwargs) -> None:
         """
         Initialize function indexer
         :param db_path: The path where to store the database
         :param collection_name: The name of the collection
         :param kwargs: Additional arguments
         """
-        self._client = chromadb.PersistentClient(path=db_path, settings=Settings(
-            anonymized_telemetry=False,
-            allow_reset=True,
-        ))
+        # self._client = chromadb.PersistentClient(path=db_path, settings=Settings(
+        #     anonymized_telemetry=False,
+        #     allow_reset=True,
+        # ))
+        self._client = chroma_client
         openai.api_key = kwargs.get("openai_api_key", os.getenv("OPENAI_API_KEY"))
+        if embedding_function is None:
+            self._embedding_function = embedding_functions.OpenAIEmbeddingFunction()
+        else:
+            self._embedding_function = embedding_function
         self.collection_name = collection_name
+        self._init_collection()
+
+        self._llm_interface = llm_interface
         self._fns_map = {}
         self._fns_index_map = {}
         self._open_ai_function_map = []
-        self.openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-            model_name="text-embedding-ada-002"
-        )
+        self._functions = {}
+        _get_results = self._collection.get()
+        if _get_results is not None:
+            for idx, m in enumerate(_get_results['metadatas']):
+                if "is_partial" in m and bool(m["is_partial"]):
+                    logger.warning(
+                        f"Found partial function {m['name']}. This function will not be rehydrated into the index.")
+                    continue
+                self._functions[m["hash"]] = OpenAIFunctionWrapper.from_python_function(
+                    func=FunctionIndexer.function_from_ref(m["identifier"]), llm_interface=self._llm_interface)
+
+    def _init_collection(self) -> None:
+        self._collection = self._client.get_or_create_collection(name=self.collection_name,
+                                                                 metadata={"hnsw:space": "cosine"},
+                                                                 embedding_function=self._embedding_function)
+
+    @staticmethod
+    def function_from_ref(ref_identifier: str) -> callable:
+        """
+        Get function from reference
+        :param ref_identifier: The reference identifier
+        :return: The function
+        """
+        parts = ref_identifier.split('.')
+        _fn = parts[-1]
+        _mod = ""
+        _last_mod = ""
+        _module = None
+        for pt in parts[:-1]:
+            try:
+                _last_mod = str(_mod)
+                _mod += pt
+                _module = importlib.import_module(_mod)
+                _mod += "."
+                # module = importlib.import_module('.'.join(parts[:-1]))
+                # function = getattr(module, _fn)
+            except ModuleNotFoundError:
+                print("Last module: ", _last_mod)
+                _module = importlib.import_module(_last_mod[:-1] if _last_mod.endswith(".") else _last_mod)
+                _module = getattr(_module, pt)
+                # print(f"Module: {getattr(module, pt)}")
+        # module = importlib.import_module('.'.join(parts[:-1]))
+        if _module is None:
+            raise ModuleNotFoundError(f"Could not find module {_mod}")
+        _fn = _module
+        part = parts[-1]
+        _fn = getattr(_fn, part)
+        return _fn
 
     def reset_function_index(self) -> None:
         """
@@ -48,57 +111,72 @@ class FunctionIndexer(object):
         """
 
         self._client.reset()
+        self._init_collection()
 
-    def index_functions(self, functions: list[callable]) -> None:
+    def index_functions(self, functions: list[callable or OpenAIFunctionWrapper],
+                        llm_interface: LLMInterface = None,
+                        enhanced_summary: bool = False) -> None:
         """
         Index one or more functions
         Note: Function uniqueness is not checked in this version
 
-        :param functions:
+        :param llm_interface: The LLM interface
+        :param functions: The functions to index
+        :param enhanced_summary: Whether to use enhanced summary
         :return:
         """
+        _fn_llm_interface = llm_interface if llm_interface is not None else self._llm_interface
+        _wrapped_functions = [
+            OpenAIFunctionWrapper.from_python_function(func=f, llm_interface=_fn_llm_interface) for f
+            in functions if not isinstance(f, OpenAIFunctionWrapper)]
+        _wrapped_functions.extend([f for f in functions if isinstance(f, OpenAIFunctionWrapper)])
+        _fn_hashes = [f.hash for f in _wrapped_functions]
+        _existing_fn_results = self._collection.get(ids=_fn_hashes)
+        print(_existing_fn_results)
+        # filter wrapped functions that are already in the index
+        _original_wrapped_functions = _wrapped_functions.copy()
+        _wrapped_functions = [f for f in _wrapped_functions if f.hash not in _existing_fn_results["ids"]]
+        if len(_wrapped_functions) == 0:
+            logger.info("No new functions to index")
+            self._functions.update(
+                {f.hash: f for f in _original_wrapped_functions})  # we only rehydrate that are already in the index
+            return
+        _docs = []
+        _metadatas = []
+        _ids = []
+        _function_summarizer = OpenAIInterface(max_tokens=200)
+        for f in _wrapped_functions:
+            if enhanced_summary:
+                _function_summarizer.add_conversation_message(
+                    {"role": "system",
+                     "content": "You are an expert summarizer. Your purpose is to provide a good summary of the function so that the user can add the summary in an embedding database which will them be searched."})
+                _fsummary = _function_summarizer.send(f"Summarize the function below.\n\n{inspect.getsource(f.func)}")
+                _docs.append(f"{_fsummary['content']}")
+                _function_summarizer.conversation_store.clear()
+            else:
+                _docs.append(f"{f.description}")
+            _metadatas.append(
+                {"name": f.name, "identifier": f.identifier, "hash": f.hash, "is_partial": str(f.is_partial),
+                 **f.metadata_dict})
+            _ids.append(f.hash)
 
-        _ai_fun_map, _fns_map, _fns_index_map = FunctionIndexer.get_functions(functions)
-        collection = self._client.get_or_create_collection(name=self.collection_name, metadata={"hnsw:space": "cosine"},
-                                                           embedding_function=self.openai_ef)
-        self._fns_map.update(_fns_map)
-        self._open_ai_function_map.extend(_ai_fun_map)
-        self._fns_index_map.update(_fns_index_map)
-        collection.add(documents=[f['description'] for f in _fns_index_map.values()],
-                       metadatas=[{"name": f,
-                                   "file": str(inspect.getfile(_fns_map[f])),
-                                   "module": inspect.getmodule(_fns_map[f]).__name__} for f, v in
-                                  _fns_index_map.items()],
-                       ids=[str(ULID()) for _ in _fns_index_map.values()])
+        self._collection.add(documents=_docs,
+                             metadatas=_metadatas,
+                             ids=_ids)
+        self._functions.update({f.hash: f for f in _wrapped_functions})
 
-    def index_wrapper_functions(self, functions: list[OpenAIFunctionWrapper]):
+    def index_wrapper_functions(self, functions: list[OpenAIFunctionWrapper],
+                                llm_interface: LLMInterface = None,
+                                enhanced_summary: bool = False) -> None:
         """
         Index one or more functions
         Note: Function uniqueness is not checked in this version
-        :param functions:
-        :return:
+        :param functions: The functions to index
+        :param llm_interface: The LLM interface
+        :param enhanced_summary: Whether to use enhanced summary
+        :return: None
         """
-        collection = self._client.get_or_create_collection(name=self.collection_name,
-                                                           metadata={"hnsw:space": "cosine"},
-                                                           embedding_function=self.openai_ef)
-        # print(f"Docs: {collection.get()}")
-        collection.add(documents=[f.description for f in functions],
-                       metadatas=[{"name": f.name, **f.metadata_dict} for f in
-                                  functions],
-                       ids=[str(ULID()) for _ in functions])
-
-    def rehydrate_function_map(self, functions: list[callable]) -> None:
-        """
-        Rehydrate function map
-
-        :param functions:
-        :return:
-        """
-
-        _ai_fun_map, _fns_map, _fns_index_map = FunctionIndexer.get_functions(functions)
-        self._fns_map.update(_fns_map)
-        self._open_ai_function_map.extend(_ai_fun_map)
-        self._fns_index_map.update(_fns_index_map)
+        self.index_functions(functions=functions, llm_interface=llm_interface, enhanced_summary=enhanced_summary)
 
     def get_ai_fn_abbr_map(self) -> dict[str, str]:
         """
@@ -109,7 +187,15 @@ class FunctionIndexer(object):
 
         return {f['name']: f['description'] for f in self._open_ai_function_map}
 
-    def find_functions(self, query: str, max_results: int = 2, similarity_threshold: float = 1.0) -> callable:
+    def functions_summary(self) -> dict[str, str]:
+        """
+        Get functions summary
+
+        :return: Map of function name (key) and description (value)
+        """
+        return {f.name: f.description for f in self._functions.values()}
+
+    def find_functions(self, query: str, max_results: int = 2, similarity_threshold: float = 1.0) -> list[SearchResult]:
         """
         Find functions by description
 
@@ -119,16 +205,19 @@ class FunctionIndexer(object):
         :return:
         """
         _response = []
-        collection = self._client.get_or_create_collection(name=self.collection_name,
-                                                           metadata={"hnsw:space": "cosine"},
-                                                           embedding_function=self.openai_ef)
-        # print(collection.get())
-        res = collection.query(query_texts=[query], n_results=max_results)
-        print(f"Got results from sematic search: {res}")
-        for r in range(len(res['documents'][0])):
-            print(f"Distance: {res['distances'][0][r]} vs threshold: {similarity_threshold}")
-            if res['distances'][0][r] <= similarity_threshold:
-                _response.append(res['metadatas'][0][r]['name'])
+        # print(self._functions.keys())
+        res = self._collection.query(query_texts=[query], n_results=max_results)
+        # print(f"Got results from sematic search: {res}")
+        for idx, _ in enumerate(res['documents'][0]):
+            print(f"Distance: {res['distances'][0][idx]} vs threshold: {similarity_threshold}")
+            if res['distances'][0][idx] <= similarity_threshold:
+                _search_res = SearchResult(name=res['metadatas'][0][idx]['name'],
+                                           function=self._functions[res['metadatas'][0][idx]['hash']].func,
+                                           wrapper=self._functions[res['metadatas'][0][idx]['hash']],
+                                           distance=res['distances'][0][idx])
+                _response.append(_search_res)
+
+        _response.sort(key=lambda x: x.distance)
         return _response
 
     @staticmethod

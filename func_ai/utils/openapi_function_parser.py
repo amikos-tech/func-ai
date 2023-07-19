@@ -286,7 +286,7 @@ class OpenAPISpecOpenAIWrapper(object):
                                       }) for
             fn, f in _funcs.items()}
         if index:
-            self.indexer = FunctionIndexer("./tests/wrap_index")
+            self.indexer = FunctionIndexer(llm_interface=self.llm_interface)
             # TODO: here we're resetting the index every time we create a new wrapper. In the future we should be able to index the same spec multiple times
             self.indexer.reset_function_index()
             self.indexer.index_wrapper_functions([f for k, f in self.operations.items()])
