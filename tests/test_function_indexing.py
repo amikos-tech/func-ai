@@ -13,7 +13,7 @@ def test_api_indexing():
     _spec = OpenAPISpecOpenAIWrapper.from_url('http://petstore.swagger.io/v2/swagger.json',
                                               llm_interface=OpenAIInterface())
 
-    _fi = FunctionIndexer("./tests/wrap_index")
+    _fi = FunctionIndexer()
     _fi.reset_function_index()
     _fi.index_wrapper_functions([f for k, f in _spec.operations.items()])
     print(_fi.find_functions("How can I add a pet"))
