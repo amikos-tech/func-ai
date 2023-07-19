@@ -27,10 +27,9 @@ class FunctionIndexer(object):
         :param collection_name: The name of the collection
         :param kwargs: Additional arguments
         """
-        self._client = chromadb.Client(Settings(
+        self._client = chromadb.PersistentClient(path=db_path, settings=Settings(
             anonymized_telemetry=False,
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=db_path  # Optional, defaults to .chromadb/ in the current directory
+            allow_reset=True,
         ))
         openai.api_key = kwargs.get("openai_api_key", os.getenv("OPENAI_API_KEY"))
         self.collection_name = collection_name
