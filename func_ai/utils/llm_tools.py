@@ -531,6 +531,24 @@ class OpenAIFunctionWrapper(object):
         self.llm_interface.add_conversation_message(_function_call_llm_response)
         return self
 
+    def from_response_raw(self, llm_response: dict[str, any]) -> any:
+        """
+        Returns an instance of the class from LLM completion response
+
+        :param llm_response: completion response from LLM
+        :return: The response from the function call
+        """
+        if "function_call" not in llm_response:
+            raise ValueError(f"No function call detected: {llm_response}")
+        if llm_response["function_call"]["name"] != self.name:
+            raise ValueError(f"Function name does not match: {llm_response}")
+        try:
+            _func_response = self.func(**json.loads(llm_response["function_call"]["arguments"]))
+            return _func_response
+        except Exception as e:
+            logger.warning(f"Failed to process function call: {llm_response}")
+            raise e
+
     def from_prompt(self, prompt: str, **kwargs) -> "OpenAIFunctionWrapper":
         """
         Returns an instance of the class from LLM prompt
