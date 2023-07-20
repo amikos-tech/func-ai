@@ -13,6 +13,7 @@ from chromadb import Settings
 from chromadb.api import EmbeddingFunction
 from chromadb.utils import embedding_functions
 
+from func_ai.utils.common import to_bool
 from func_ai.utils.llm_tools import OpenAIFunctionWrapper, OpenAIInterface, LLMInterface
 from func_ai.utils.py_function_parser import func_to_json
 
@@ -58,7 +59,7 @@ class FunctionIndexer(object):
         _get_results = self._collection.get()
         if _get_results is not None:
             for idx, m in enumerate(_get_results['metadatas']):
-                if "is_partial" in m and bool(m["is_partial"]):
+                if "is_partial" in m and to_bool(m["is_partial"]):
                     logger.warning(
                         f"Found partial function {m['name']}. This function will not be rehydrated into the index.")
                     continue
